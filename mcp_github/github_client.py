@@ -3,6 +3,7 @@
 import os
 from typing import Optional
 
+from dotenv import load_dotenv
 from github import Github
 from github.Repository import Repository
 from github.GithubException import GithubException
@@ -17,11 +18,14 @@ class GitHubClient:
         Args:
             token: GitHub personal access token. If None, tries to load from GITHUB_TOKEN env var.
         """
+        # Load environment variables from .env file
+        load_dotenv()
+        
         self.token = token or os.getenv("GITHUB_TOKEN")
         if not self.token:
             raise ValueError(
                 "GitHub token is required. Set GITHUB_TOKEN environment variable "
-                "or pass token parameter. Get your token from: "
+                "or pass token parameter. Get you token from: "
                 "https://github.com/settings/tokens"
             )
         
