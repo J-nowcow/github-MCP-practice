@@ -51,7 +51,9 @@ def main() -> None:
         name="GitHub File",
         description="GitHub file or directory",
         mime_types=["text/plain", "application/json"],
-        handler=lambda owner, repo, path, ref="HEAD": get_file_resource(owner, repo, path, ref),
+        handler=lambda owner, repo, path, ref="HEAD": get_file_resource(
+            owner, repo, path, ref
+        ),
     )
 
     # Start server
