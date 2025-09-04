@@ -5,6 +5,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.tools import Tool
+from .tools_read import get_repo
 
 
 async def health() -> dict[str, str]:
@@ -22,6 +23,20 @@ def main() -> None:
         description="Health check for the MCP server",
         input_schema={},
         handler=health
+    ))
+    
+    server.add_tool(Tool(
+        name="getRepo",
+        description="Get repository information from GitHub",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "owner": {"type": "string", "description": "Repository owner (username or organization)"},
+                "repo": {"type": "string", "description": "Repository name"}
+            },
+            "required": ["owner", "repo"]
+        },
+        handler=get_repo
     ))
     
     # Start server
