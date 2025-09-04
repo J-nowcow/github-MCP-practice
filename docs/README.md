@@ -8,6 +8,7 @@
 ### 구체적인 문제 해결
 - [ImportError 트러블슈팅](./import_error_troubleshooting.md) - 상대 임포트 실패 문제
 - [FastMCP 데코레이터 트러블슈팅](./decorator_troubleshooting.md) - 데코레이터 사용 관련 문제
+- [MCP 연결 실패 트러블슈팅](./mcp_connection_troubleshooting.md) - FastAPI 앱에서 MCP 서버 연결 실패 문제
 - [일반 트러블슈팅](./troubleshooting.md) - FastMCP 관련 일반적인 문제들
 
 ## 🧪 테스트 가이드

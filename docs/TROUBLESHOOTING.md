@@ -1,22 +1,34 @@
 # FastMCP 트러블슈팅 가이드
 
-## 🚨 주요 문제와 해결 방법
+## 🚨 문제 개요
 
-### 1. `@mcp.tool` 데코레이터 오류
+**문제명**: FastMCP 데코레이터 사용 시 발생하는 일반적인 오류들
 
-**문제:**
-```python
-@mcp.tool
-def my_function():
-    pass
-# NameError: name 'mcp' is not defined
+**발생 시점**: FastMCP 서버 개발 및 도구 등록 시
+**에러 메시지**: 
+```
+NameError: name 'mcp' is not defined
+TypeError: 'module' object is not callable
+AttributeError: 'FastMCP' object has no attribute 'serve_stdio'
 ```
 
-**원인:**
-- `tools_read.py`에서 별도의 FastMCP 인스턴스를 만들려고 시도
-- `mcp = FastMCP("github-tools")`로 인스턴스 생성 후 `@mcp.tool` 사용
+## 🔍 원인 분석
 
-**해결 방법:**
+**근본 원인**: 
+1. FastMCP 인스턴스 관리 방식의 혼란
+2. 데코레이터 사용 위치의 잘못된 이해
+3. FastMCP 버전별 메서드 차이
+
+**관련 코드**: `mcp_github/tools_read.py`와 `mcp_github/server.py`
+
+## ✅ 해결 방법
+
+**해결 단계**:
+1. `tools_read.py`에서 `@mcp.tool` 데코레이터 제거
+2. `server.py`에서 `@server.tool` 데코레이터 사용
+3. `server.run()` 메서드 사용 (FastMCP 2.7+)
+
+**코드 예시**:
 ```python
 # ❌ 잘못된 방법
 # tools_read.py
@@ -26,56 +38,48 @@ mcp = FastMCP("github-tools")
 def my_function():
     pass
 
-# ✅ 올바른 방법
 # server.py
-server = FastMCP("mcp-github", "0.1.0")
+server.serve_stdio()  # FastMCP 1.x 방식
 
+# ✅ 올바른 방법
+# tools_read.py - 데코레이터 없이 일반 함수
+async def my_function():
+    pass
+
+# server.py
 @server.tool
 def my_function():
-    pass
+    return my_function()  # tools_read.py의 함수 호출
+
+server.run()  # FastMCP 2.7+ 방식
 ```
 
-### 2. FastMCP 버전별 메서드 차이
+## 🧪 검증 방법
 
-**문제:**
-```python
-# FastMCP 1.x
-server.serve_stdio()
-
-# FastMCP 2.x  
-server.run()  # 기본값: STDIO
+**테스트 명령어**:
+```bash
+python -m mcp_github.server  # 서버 실행
+python tests/test_tools.py    # 도구 테스트
 ```
 
-**해결 방법:**
-```python
-# FastMCP 2.7+ 권장 방식
-server.run()  # 자동으로 적절한 전송 방식 선택
-```
-
-### 3. 도구 등록 방식
-
-**권장 방식:**
-```python
-# server.py에서 직접 데코레이터 사용
-@server.tool
-def getRepo(owner: str, repo: str) -> dict[str, Any]:
-    """Get repository information from GitHub."""
-    return get_repo(owner, repo)  # tools_read.py의 함수 호출
-```
-
-**장점:**
-- 단일 FastMCP 인스턴스로 관리
-- 명확한 도구 등록 구조
-- 에러 발생 시 추적 용이
-
-## 🔧 빠른 수정 체크리스트
-
-- [ ] `tools_read.py`에서 `@mcp.tool` 데코레이터 제거
-- [ ] `server.py`에서 `@server.tool` 데코레이터 사용
-- [ ] `server.run()` 메서드 사용
-- [ ] 가상환경 활성화 확인
+**예상 결과**: 서버가 정상 시작되고, 모든 도구가 등록되어 테스트 성공
 
 ## 📚 참고 자료
 
 - [FastMCP 공식 문서](https://gofastmcp.com)
 - [FastMCP GitHub](https://github.com/jlowin/fastmcp)
+- [MCP 도구 등록 가이드](https://gofastmcp.com/docs/tools)
+
+## 🔄 예방 방법
+
+**앞으로 주의사항**:
+- `tools_read.py`에는 데코레이터를 사용하지 말고 일반 함수로 구현
+- `server.py`에서만 `@server.tool` 데코레이터 사용
+- FastMCP 버전에 맞는 메서드 사용 (`server.run()`)
+- 단일 FastMCP 인스턴스로 관리
+
+---
+
+**작성일**: 2024-09-04
+**작성자**: J-nowcow
+**버전**: 0.1.0

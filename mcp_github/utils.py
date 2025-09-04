@@ -134,3 +134,54 @@ def is_binary_file(filename: str) -> bool:
     }
 
     return any(filename.lower().endswith(ext) for ext in binary_extensions)
+
+
+def validate_file_path(path: str) -> bool:
+    """Validate file path for GitHub operations.
+    
+    Args:
+        path: File path to validate
+        
+    Returns:
+        True if path is valid, False otherwise
+    """
+    if not path or len(path) > 255:
+        return False
+    
+    # GitHub에서 허용하지 않는 문자들
+    invalid_chars = ['<', '>', ':', '"', '|', '?', '*', '\\']
+    if any(char in path for char in invalid_chars):
+        return False
+    
+    # 경로가 ..로 시작하거나 끝나면 안됨
+    if path.startswith('..') or path.endswith('..'):
+        return False
+    
+    # 연속된 슬래시나 백슬래시 방지
+    if '//' in path or '\\\\' in path:
+        return False
+    
+    return True
+
+
+def sanitize_commit_message(message: str) -> str:
+    """Sanitize commit message for GitHub.
+    
+    Args:
+        message: Raw commit message
+        
+    Returns:
+        Sanitized commit message
+    """
+    if not message:
+        return "Update files"
+    
+    # 첫 번째 줄만 사용 (GitHub의 첫 번째 줄 제한)
+    lines = message.strip().split('\n')
+    first_line = lines[0].strip()
+    
+    # 길이 제한 (GitHub 권장사항)
+    if len(first_line) > 72:
+        first_line = first_line[:69] + "..."
+    
+    return first_line

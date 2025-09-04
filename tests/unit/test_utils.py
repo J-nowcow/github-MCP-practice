@@ -5,7 +5,9 @@ from mcp_github.utils import (
     is_text,
     summarize_diff,
     format_file_size,
-    is_binary_file
+    is_binary_file,
+    validate_file_path,
+    sanitize_commit_message
 )
 
 
@@ -115,3 +117,77 @@ class TestUtils:
         assert is_binary_file("file.with.dots.txt") is False
         assert is_binary_file("file-with-dashes.py") is False
         assert is_binary_file("file_with_underscores.json") is False
+
+
+def test_validate_file_path_valid():
+    """Test valid file paths."""
+    valid_paths = [
+        "file.txt",
+        "folder/file.txt",
+        "folder/subfolder/file.py",
+        "README.md",
+        "src/main.py",
+        "docs/guide.md"
+    ]
+    
+    for path in valid_paths:
+        assert validate_file_path(path) is True
+
+
+def test_validate_file_path_invalid():
+    """Test invalid file paths."""
+    invalid_paths = [
+        "",  # Empty path
+        "a" * 256,  # Too long
+        "file<.txt",  # Invalid character
+        "file>.txt",
+        "file:.txt",
+        "file\".txt",
+        "file|.txt",
+        "file?.txt",
+        "file*.txt",
+        "file\\.txt",
+        "../file.txt",  # Starts with ..
+        "file.txt..",   # Ends with ..
+        "folder//file.txt",  # Double slash
+        "folder\\\\file.txt"  # Double backslash
+    ]
+    
+    for path in invalid_paths:
+        assert validate_file_path(path) is False
+
+
+def test_sanitize_commit_message_normal():
+    """Test normal commit message sanitization."""
+    message = "Add new feature"
+    result = sanitize_commit_message(message)
+    assert result == "Add new feature"
+
+
+def test_sanitize_commit_message_empty():
+    """Test empty commit message sanitization."""
+    message = ""
+    result = sanitize_commit_message(message)
+    assert result == "Update files"
+
+
+def test_sanitize_commit_message_multiline():
+    """Test multiline commit message sanitization."""
+    message = "Add new feature\n\nThis is a detailed description"
+    result = sanitize_commit_message(message)
+    assert result == "Add new feature"
+
+
+def test_sanitize_commit_message_too_long():
+    """Test long commit message sanitization."""
+    message = "This is a very long commit message that exceeds the recommended length limit for GitHub commit messages"
+    result = sanitize_commit_message(message)
+    assert len(result) <= 72
+    assert result.endswith("...")
+
+
+def test_sanitize_commit_message_whitespace():
+    """Test commit message with whitespace sanitization."""
+    message = "   Add new feature   "
+    result = sanitize_commit_message(message)
+    assert result == "Add new feature"

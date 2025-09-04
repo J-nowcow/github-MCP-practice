@@ -4,8 +4,8 @@ import json
 import re
 from typing import Any, Optional
 
-from .github_client import GitHubClient
-from .utils import is_text, format_file_size, is_binary_file
+from github_client import GitHubClient
+from utils import is_text, format_file_size, is_binary_file
 
 
 def parse_gh_uri(uri: str) -> tuple[str, str, str, Optional[str]]:

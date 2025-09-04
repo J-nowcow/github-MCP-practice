@@ -3,8 +3,8 @@
 import json
 from typing import Any, Dict, List
 
-from .github_client import GitHubClient
-from .utils import summarize_diff, format_file_size, is_binary_file, is_text
+from github_client import GitHubClient
+from utils import summarize_diff, format_file_size, is_binary_file, is_text
 
 
 async def get_repo(owner: str, repo: str) -> Dict[str, Any]:
