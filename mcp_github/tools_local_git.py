@@ -1,15 +1,24 @@
 import subprocess
 import json
+import os
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 async def execute_git_command(command: str, cwd: Optional[str] = None) -> Dict[str, Any]:
     """로컬 Git 명령어를 실행하고 결과를 반환합니다."""
     try:
+        # 기본 작업 디렉토리를 프로젝트 루트로 설정
+        if cwd is None:
+            # 현재 스크립트 위치에서 프로젝트 루트 찾기
+            current_dir = Path(__file__).parent.parent
+            cwd = str(current_dir)
+        
+        print(f"Executing Git command: {command} in directory: {cwd}")
+        
         # Git 명령어 실행
         result = subprocess.run(
             command.split(),
-            cwd=cwd or ".",
+            cwd=cwd,
             capture_output=True,
             text=True,
             timeout=30
@@ -20,19 +29,22 @@ async def execute_git_command(command: str, cwd: Optional[str] = None) -> Dict[s
             "stdout": result.stdout.strip(),
             "stderr": result.stderr.strip(),
             "returncode": result.returncode,
-            "command": command
+            "command": command,
+            "cwd": cwd
         }
     except subprocess.TimeoutExpired:
         return {
             "success": False,
             "error": "명령어 실행 시간 초과",
-            "command": command
+            "command": command,
+            "cwd": cwd
         }
     except Exception as e:
         return {
             "success": False,
             "error": str(e),
-            "command": command
+            "command": command,
+            "cwd": cwd
         }
 
 async def get_git_status(cwd: Optional[str] = None) -> Dict[str, Any]:
