@@ -99,13 +99,46 @@ async def stage_specific_files(files: List[str], cwd: Optional[str] = None) -> D
 
 async def create_commit(message: str, cwd: Optional[str] = None) -> Dict[str, Any]:
     """커밋을 생성합니다."""
-    result = await execute_git_command(f'git commit -m "{message}"', cwd)
-    return {
-        "success": result["success"],
-        "message": "커밋이 성공적으로 생성되었습니다." if result["success"] else "커밋 생성 실패",
-        "commit_hash": result["stdout"].split()[-1] if result["success"] and "commit" in result["stdout"] else None,
-        "error": result.get("error") or result.get("stderr")
-    }
+    # 메시지에 따옴표가 포함되어 있으면 이스케이프 처리
+    escaped_message = message.replace('"', '\\"')
+    
+    # Git 명령어를 리스트로 구성하여 공백 문제 해결
+    command_parts = ["git", "commit", "-m", escaped_message]
+    
+    try:
+        # 기본 작업 디렉토리를 프로젝트 루트로 설정
+        if cwd is None:
+            current_dir = Path(__file__).parent.parent
+            cwd = str(current_dir)
+        
+        print(f"Executing Git commit command: {' '.join(command_parts)} in directory: {cwd}")
+        
+        # Git 명령어 실행
+        result = subprocess.run(
+            command_parts,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        return {
+            "success": result.returncode == 0,
+            "message": "커밋이 성공적으로 생성되었습니다." if result["success"] else "커밋 생성 실패",
+            "commit_hash": result.stdout.split()[-1] if result.success and "commit" in result.stdout else None,
+            "error": result.get("error") or result.get("stderr"),
+            "command": " ".join(command_parts),
+            "cwd": cwd
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": "커밋 생성 실패",
+            "commit_hash": None,
+            "error": str(e),
+            "command": " ".join(command_parts),
+            "cwd": cwd
+        }
 
 async def push_to_remote(branch: str = "main", remote: str = "origin", cwd: Optional[str] = None) -> Dict[str, Any]:
     """원격 저장소에 푸시합니다."""
