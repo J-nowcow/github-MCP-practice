@@ -1,0 +1,58 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
+version_files = [
+    "pyproject.toml:version",
+    "mcp_github/__init__.py:__version__"
+]
+
+[tool.commitizen.customize]
+message_template = "{{change_type}}{{scope}}: {{message}}"
+example = "feat: add new feature"
+schema = "<type>(<scope>): <subject>"
+schema_pattern = "(build|ci|docs|feat|fix|perf|refactor|revert|style|test)(\\(.+\\))?: .+"
+
+[tool.commitizen.customize.questions]
+- name: "change_type"
+  type: "list"
+  choices:
+    - value: "feat"
+      name: "feat: A new feature"
+    - value: "fix"
+      name: "fix: A bug fix"
+    - value: "docs"
+      name: "docs: Documentation only changes"
+    - value: "style"
+      name: "style: Changes that do not affect the meaning of the code"
+    - value: "refactor"
+      name: "refactor: A code change that neither fixes a bug nor adds a feature"
+    - value: "perf"
+      name: "perf: A code change that improves performance"
+    - value: "test"
+      name: "test: Adding missing tests or correcting existing tests"
+    - value: "build"
+      name: "build: Changes that affect the build system or external dependencies"
+    - value: "ci"
+      name: "ci: Changes to our CI configuration files and scripts"
+    - value: "chore"
+      name: "chore: Other changes that don't modify src or test files"
+    - value: "revert"
+      name: "revert: Reverts a previous commit"
+  message: "Select the type of change you are committing:"
+
+- name: "scope"
+  type: "input"
+  message: "What is the scope of this change (e.g. component or file name)? (press [enter] to skip):"
+
+- name: "subject"
+  type: "input"
+  message: "Write a short, imperative tense description of the change:"
+
+- name: "body"
+  type: "input"
+  message: "Provide a longer description of the change: (press [enter] to skip):"
+
+- name: "footer"
+  type: "input"
+  message: "List any breaking changes or issues closed by this change: (press [enter] to skip):"

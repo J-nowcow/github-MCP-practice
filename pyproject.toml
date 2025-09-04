@@ -42,6 +42,12 @@ dev = [
     "pre-commit",
     "commitizen",
     "pytest-cov",
+    "black",
+    "isort",
+    "pyupgrade",
+    "bandit",
+    "safety",
+    "pdoc",
 ]
 
 [project.scripts]

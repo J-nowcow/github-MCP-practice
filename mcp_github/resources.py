@@ -1,92 +1,184 @@
-"""GitHub MCP 리소스 핸들러."""
+"""GitHub MCP resource handlers for URI-based content access."""
 
 import json
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Dict, Optional, Tuple
+from urllib.parse import unquote
+
 from .github_client import GitHubClient
-from .utils import summarize_diff, format_file_size, is_binary_file, is_text
+from .utils import is_text, summarize_diff, format_file_size, is_binary_file
 
 
-def get_pr_diff_resource(owner: str, repo: str, number: int) -> Dict[str, Any]:
-    """PR diff를 리소스로 제공합니다.
+def parse_gh_uri(uri: str) -> Tuple[str, str, str, Optional[str]]:
+    """Parse GitHub URI to extract owner, repo, path, and optional ref.
     
-    URI 형식: gh-pr-diff://{owner}/{repo}/{number}
+    Args:
+        uri: GitHub URI (gh-file://owner/repo/path or gh-pr-diff://owner/repo/number)
+        
+    Returns:
+        Tuple of (owner, repo, path, ref)
+    """
+    if uri.startswith("gh-file://"):
+        # gh-file://owner/repo/path[?ref=branch]
+        uri = uri[11:]  # Remove "gh-file://"
+        if "?" in uri:
+            path_part, query_part = uri.split("?", 1)
+            ref = None
+            if query_part.startswith("ref="):
+                ref = query_part[4:]
+        else:
+            path_part = uri
+            ref = "HEAD"
+        
+        parts = path_part.split("/", 2)
+        if len(parts) >= 3:
+            return parts[0], parts[1], parts[2], ref
+        else:
+            raise ValueError(f"Invalid gh-file URI format: {uri}")
+            
+    elif uri.startswith("gh-pr-diff://"):
+        # gh-pr-diff://owner/repo/number
+        uri = uri[14:]  # Remove "gh-pr-diff://"
+        parts = uri.split("/")
+        if len(parts) >= 3:
+            return parts[0], parts[1], parts[2], None
+        else:
+            raise ValueError(f"Invalid gh-pr-diff URI format: {uri}")
+    else:
+        raise ValueError(f"Unsupported URI scheme: {uri}")
+
+
+def get_pr_diff_resource(owner: str, repo: str, number: str) -> Dict[str, Any]:
+    """Get PR diff as a resource.
+    
+    Args:
+        owner: Repository owner
+        repo: Repository name
+        number: PR number
+        
+    Returns:
+        Resource data with content and metadata
     """
     try:
         client = GitHubClient()
         repository = client.get_repository(owner, repo)
-        pull_request = repository.get_pull(number)
+        pull_request = repository.get_pull(int(number))
         
-        # diff 정보 수집
+        # Get diff
         diff = pull_request.get_files()
+        
         diff_data = []
         total_additions = 0
         total_deletions = 0
         
         for file in diff:
+            # 트렁케이션 정보 추가
+            patch_content = file.patch[:2000] if file.patch else None
+            truncated = len(file.patch) > 2000 if file.patch else False
+            
             file_data = {
                 "filename": file.filename,
                 "status": file.status,
                 "additions": file.additions,
                 "deletions": file.deletions,
                 "changes": file.changes,
-                "patch": file.patch[:2000] if file.patch else None,  # 더 큰 제한
+                "patch": patch_content,
+                "truncated": truncated,
+                "original_length": len(file.patch) if file.patch else 0,
                 "raw_url": file.raw_url
             }
             diff_data.append(file_data)
             total_additions += file.additions
             total_deletions += file.deletions
         
-        # 리소스 메타데이터
-        resource_data = {
-            "type": "pr_diff",
-            "owner": owner,
-            "repo": repo,
-            "pr_number": number,
-            "title": pull_request.title,
-            "author": pull_request.user.login,
-            "state": pull_request.state,
-            "files_changed": len(diff_data),
+        # Create summary
+        summary = f"""Pull Request #{number}: {pull_request.title}
+Repository: {repository.full_name}
+Author: @{pull_request.user.login}
+State: {pull_request.state}
+Files changed: {len(diff_data)}
+Total additions: +{total_additions}
+Total deletions: -{total_deletions}
+
+Changed files:
+"""
+        for file in diff_data[:10]:  # Show first 10 files
+            summary += f"  {file['filename']} ({file['status']}) +{file['additions']} -{file['deletions']}\n"
+        
+        if len(diff_data) > 10:
+            summary += f"\n... and {len(diff_data) - 10} more files"
+        
+        data = {
+            "summary": summary,
+            "data": diff_data,
+            "success": True,
+            "file_count": len(diff_data),
             "total_additions": total_additions,
-            "total_deletions": total_deletions,
-            "diff_files": diff_data,
-            "summary": f"PR #{number}: {pull_request.title} - {len(diff_data)} files changed (+{total_additions} -{total_deletions})"
+            "total_deletions": total_deletions
+        }
+        
+        # JSON 중복 처리 제거 - 한 번만 생성
+        resource_data = json.dumps(data, indent=2)
+        
+        metadata = {
+            "name": f"PR #{number} Diff",
+            "description": f"Diff for pull request #{number} in {owner}/{repo}",
+            "mime_type": "application/json",
+            "size": len(resource_data),  # 실제 반환 크기
+            "uri": f"gh-pr-diff://{owner}/{repo}/{number}",
+            "source": f"https://github.com/{owner}/{repo}/pull/{number}"
         }
         
         return {
-            "content": json.dumps(resource_data, indent=2),
-            "mime_type": "application/json",
-            "metadata": {
-                "name": f"PR #{number} Diff",
-                "description": f"Diff for {owner}/{repo}#{number}",
-                "size": len(json.dumps(resource_data)),
-                "tags": ["github", "pr", "diff"]
-            }
+            "content": resource_data,
+            "metadata": metadata
         }
         
     except Exception as e:
-        return {
-            "content": json.dumps({"error": str(e)}, indent=2),
+        error_data = {
+            "error": str(e),
+            "success": False,
+            "uri": f"gh-pr-diff://{owner}/{repo}/{number}"
+        }
+        
+        resource_data = json.dumps(error_data, indent=2)
+        
+        metadata = {
+            "name": f"PR #{number} Diff Error",
+            "description": f"Error retrieving diff for PR #{number}",
             "mime_type": "application/json",
-            "metadata": {
-                "name": f"PR #{number} Diff Error",
-                "description": f"Error loading diff: {str(e)}",
-                "tags": ["github", "pr", "diff", "error"]
-            }
+            "size": len(resource_data),
+            "uri": f"gh-pr-diff://{owner}/{repo}/{number}",
+            "error": True
+        }
+        
+        return {
+            "content": resource_data,
+            "metadata": metadata
         }
 
 
 def get_file_resource(owner: str, repo: str, path: str, ref: str = "HEAD") -> Dict[str, Any]:
-    """파일을 리소스로 제공합니다.
+    """Get file or directory as a resource.
     
-    URI 형식: gh-file://{owner}/{repo}/{path}?ref={ref}
+    Args:
+        owner: Repository owner
+        repo: Repository name
+        path: File path in repository
+        ref: Git reference (branch, tag, or commit SHA)
+        
+    Returns:
+        Resource data with content and metadata
     """
     try:
         client = GitHubClient()
         repository = client.get_repository(owner, repo)
+        
+        # Get file content
         file_content = repository.get_contents(path, ref=ref)
         
         if isinstance(file_content, list):
-            # 디렉토리인 경우
+            # Directory
             files = []
             for item in file_content:
                 file_data = {
@@ -95,154 +187,152 @@ def get_file_resource(owner: str, repo: str, path: str, ref: str = "HEAD") -> Di
                     "type": item.type,
                     "size": item.size,
                     "size_formatted": format_file_size(item.size),
-                    "url": item.html_url
+                    "url": item.html_url,
+                    "download_url": item.download_url
                 }
                 files.append(file_data)
             
-            resource_data = {
+            summary = f"""Directory: {path}
+Repository: {repository.full_name}
+Reference: {ref}
+Files: {len(files)}
+
+Contents:
+"""
+            for file in files[:10]:  # Show first 10 files
+                summary += f"  {file['name']} ({file['type']}, {file['size_formatted']})\n"
+            
+            if len(files) > 10:
+                summary += f"\n... and {len(files) - 10} more items"
+            
+            data = {
+                "summary": summary,
+                "data": files,
+                "success": True,
                 "type": "directory",
-                "owner": owner,
-                "repo": repo,
-                "path": path,
-                "ref": ref,
-                "file_count": len(files),
-                "files": files,
-                "summary": f"Directory: {path} ({len(files)} items)"
+                "file_count": len(files)
+            }
+            
+            # JSON 중복 처리 제거
+            resource_data = json.dumps(data, indent=2)
+            
+            metadata = {
+                "name": f"Directory: {path}",
+                "description": f"Directory contents for {path} in {owner}/{repo}",
+                "mime_type": "application/json",
+                "size": len(resource_data),
+                "uri": f"gh-file://{owner}/{repo}/{path}?ref={ref}",
+                "source": f"https://github.com/{owner}/{repo}/tree/{ref}/{path}",
+                "type": "directory"
             }
             
             return {
-                "content": json.dumps(resource_data, indent=2),
-                "mime_type": "application/json",
-                "metadata": {
-                    "name": f"Directory: {path}",
-                    "description": f"Directory listing for {path}",
-                    "size": len(json.dumps(resource_data)),
-                    "tags": ["github", "directory", "listing"]
-                }
+                "content": resource_data,
+                "metadata": metadata
             }
+        
         else:
-            # 단일 파일인 경우
+            # Single file
             content = file_content.decoded_content
             is_text_content = is_text(content)
             
-            if is_text_content and file_content.size < 1024 * 1024:  # 1MB 미만
-                try:
-                    file_text = content.decode('utf-8')
-                except UnicodeDecodeError:
-                    file_text = content.decode('utf-8', errors='replace')
-                
-                resource_data = {
-                    "type": "file",
-                    "owner": owner,
-                    "repo": repo,
-                    "path": path,
-                    "ref": ref,
-                    "name": file_content.name,
-                    "size": file_content.size,
-                    "size_formatted": format_file_size(file_content.size),
-                    "encoding": file_content.encoding,
-                    "is_text": True,
-                    "content": file_text,
-                    "url": file_content.html_url,
-                    "summary": f"File: {path} ({format_file_size(file_content.size)})"
-                }
-                
-                return {
-                    "content": file_text,
-                    "mime_type": "text/plain",
-                    "metadata": {
-                        "name": f"File: {path}",
-                        "description": f"File content for {path}",
-                        "size": file_content.size,
-                        "tags": ["github", "file", "content"]
-                    }
-                }
-            else:
-                # 바이너리 파일이거나 너무 큰 파일
-                resource_data = {
-                    "type": "file",
-                    "owner": owner,
-                    "repo": repo,
-                    "path": path,
-                    "ref": ref,
-                    "name": file_content.name,
-                    "size": file_content.size,
-                    "size_formatted": format_file_size(file_content.size),
-                    "is_text": False,
-                    "is_binary": is_binary_file(file_content.name),
-                    "url": file_content.html_url,
-                    "note": "Binary file or file too large to display as text"
-                }
-                
-                return {
-                    "content": json.dumps(resource_data, indent=2),
-                    "mime_type": "application/json",
-                    "metadata": {
-                        "name": f"File: {path}",
-                        "description": f"File metadata for {path}",
-                        "size": len(json.dumps(resource_data)),
-                        "tags": ["github", "file", "metadata"]
-                    }
-                }
-                
-    except Exception as e:
-        return {
-            "content": json.dumps({"error": str(e)}, indent=2),
-            "mime_type": "application/json",
-            "metadata": {
-                "name": f"File: {path} Error",
-                "description": f"Error loading file: {str(e)}",
-                "tags": ["github", "file", "error"]
+            # 바이너리 감지 개선
+            is_binary = is_binary_file(file_content.name) or (
+                hasattr(file_content, 'content_type') and 
+                file_content.content_type and 
+                not file_content.content_type.startswith('text/')
+            )
+            
+            file_data = {
+                "name": file_content.name,
+                "path": file_content.path,
+                "type": file_content.type,
+                "original_size": file_content.size,  # 원본 크기
+                "size_formatted": format_file_size(file_content.size),
+                "encoding": file_content.encoding,
+                "url": file_content.html_url,
+                "download_url": file_content.download_url,
+                "is_text": is_text_content,
+                "is_binary": is_binary
             }
-        }
-
-
-def parse_gh_uri(uri: str) -> Optional[Dict[str, Any]]:
-    """GitHub 리소스 URI를 파싱합니다.
-    
-    지원하는 URI 형식:
-    - gh-pr-diff://{owner}/{repo}/{number}
-    - gh-file://{owner}/{repo}/{path}?ref={ref}
-    """
-    if uri.startswith("gh-pr-diff://"):
-        # gh-pr-diff://owner/repo/number
-        parts = uri[15:].split("/")
-        if len(parts) >= 3:
-            try:
-                number = int(parts[2])
-                return {
-                    "type": "pr_diff",
-                    "owner": parts[0],
-                    "repo": parts[1],
-                    "number": number
-                }
-            except ValueError:
-                return None
-    
-    elif uri.startswith("gh-file://"):
-        # gh-file://owner/repo/path?ref=ref
-        parts = uri[11:].split("/")
-        if len(parts) >= 3:
-            owner = parts[0]
-            repo = parts[1]
-            path_parts = parts[2:]
             
-            # ref 파라미터 처리
-            ref = "HEAD"
-            if "?" in path_parts[-1]:
-                path_with_ref = path_parts[-1].split("?")
-                path_parts[-1] = path_with_ref[0]
-                if "ref=" in path_with_ref[1]:
-                    ref = path_with_ref[1].split("ref=")[1]
+            if is_text_content and file_content.size < 1024 * 1024:  # Less than 1MB
+                try:
+                    file_data["content"] = content.decode('utf-8')
+                    file_data["content_size"] = len(file_data["content"])  # 실제 반환 크기
+                except UnicodeDecodeError:
+                    file_data["content"] = content.decode('utf-8', errors='replace')
+                    file_data["content_size"] = len(file_data["content"])
+            else:
+                file_data["content"] = None
+                file_data["content_size"] = 0
+                if file_content.size >= 1024 * 1024:
+                    file_data["content_note"] = "File too large to display (>1MB)"
+                elif not is_text_content:
+                    file_data["content_note"] = "Binary file - content not displayed"
             
-            path = "/".join(path_parts)
+            summary = f"""File: {path}
+Repository: {repository.full_name}
+Reference: {ref}
+Original Size: {file_data['size_formatted']}
+Content Size: {file_data['content_size']} characters
+Type: {'Text' if is_text_content else 'Binary'}
+
+"""
+            if file_data["content"]:
+                summary += f"Content preview (first 200 chars):\n{file_data['content'][:200]}"
+                if len(file_data["content"]) > 200:
+                    summary += "..."
+            else:
+                summary += file_data.get("content_note", "No content preview available")
+            
+            data = {
+                "summary": summary,
+                "data": file_data,
+                "success": True,
+                "type": "file",
+                "file_size": file_content.size
+            }
+            
+            # JSON 중복 처리 제거
+            resource_data = json.dumps(data, indent=2)
+            
+            metadata = {
+                "name": f"File: {path}",
+                "description": f"File content for {path} in {owner}/{repo}",
+                "mime_type": "application/json",
+                "size": len(resource_data),
+                "uri": f"gh-file://{owner}/{repo}/{path}?ref={ref}",
+                "source": f"https://github.com/{owner}/{repo}/blob/{ref}/{path}",
+                "type": "file",
+                "original_size": file_content.size,
+                "content_size": file_data["content_size"]
+            }
             
             return {
-                "type": "file",
-                "owner": owner,
-                "repo": repo,
-                "path": path,
-                "ref": ref
+                "content": resource_data,
+                "metadata": metadata
             }
-    
-    return None
+        
+    except Exception as e:
+        error_data = {
+            "error": str(e),
+            "success": False,
+            "uri": f"gh-file://{owner}/{repo}/{path}?ref={ref}"
+        }
+        
+        resource_data = json.dumps(error_data, indent=2)
+        
+        metadata = {
+            "name": f"File Error: {path}",
+            "description": f"Error retrieving file {path}",
+            "mime_type": "application/json",
+            "size": len(resource_data),
+            "uri": f"gh-file://{owner}/{repo}/{path}?ref={ref}",
+            "error": True
+        }
+        
+        return {
+            "content": resource_data,
+            "metadata": metadata
+        }
