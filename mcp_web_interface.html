@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Git Workflow 웹 인터페이스</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .workflow-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #fafafa;
+        }
+        .workflow-section h3 {
+            color: #34495e;
+            margin-top: 0;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .result-area {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #ecf0f1;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .quick-action {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .quick-action:hover {
+            transform: translateY(-2px);
+        }
+        .quick-action h4 {
+            margin: 0 0 10px 0;
+        }
+        .quick-action p {
+            margin: 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 MCP Git Workflow 웹 인터페이스</h1>
+        
+        <div class="quick-actions">
+            <div class="quick-action" onclick="checkGitStatus()">
+                <h4>📊 Git 상태 확인</h4>
+                <p>현재 저장소 상태를 확인합니다</p>
+            </div>
+            <div class="quick-action" onclick="stageAllChanges()">
+                <h4>📁 모든 변경사항 스테이징</h4>
+                <p>변경된 모든 파일을 스테이징합니다</p>
+            </div>
+            <div class="quick-action" onclick="createCommit()">
+                <h4>💾 커밋 생성</h4>
+                <p>스테이징된 변경사항을 커밋합니다</p>
+            </div>
+            <div class="quick-action" onclick="pushToRemote()">
+                <h4>🚀 원격 저장소 푸시</h4>
+                <p>로컬 커밋을 원격 저장소에 푸시합니다</p>
+            </div>
+        </div>
+
+        <div class="workflow-section">
+            <h3>🔍 Git 상태 확인</h3>
+            <button onclick="checkGitStatus()">Git 상태 확인</button>
+            <div id="gitStatusResult" class="result-area" style="display: none;"></div>
+        </div>
+
+        <div class="workflow-section">
+            <h3>📁 파일 스테이징</h3>
+            <div class="input-group">
+                <label for="stageFiles">스테이징할 파일들 (쉼표로 구분):</label>
+                <input type="text" id="stageFiles" placeholder="예: file1.txt, file2.py (비워두면 모든 파일)">
+            </div>
+            <button onclick="stageSpecificFiles()">특정 파일 스테이징</button>
+            <button onclick="stageAllChanges()">모든 변경사항 스테이징</button>
+            <div id="stageResult" class="result-area" style="display: none;"></div>
+        </div>
+
+        <div class="workflow-section">
+            <h3>💾 커밋 생성</h3>
+            <div class="input-group">
+                <label for="commitMessage">커밋 메시지:</label>
+                <input type="text" id="commitMessage" placeholder="커밋 메시지를 입력하세요">
+            </div>
+            <button onclick="createCommit()">커밋 생성</button>
+            <div id="commitResult" class="result-area" style="display: none;"></div>
+        </div>
+
+        <div class="workflow-section">
+            <h3>🚀 원격 저장소 푸시</h3>
+            <div class="input-group">
+                <label for="pushBranch">브랜치:</label>
+                <input type="text" id="pushBranch" value="main" placeholder="main">
+            </div>
+            <div class="input-group">
+                <label for="pushRemote">원격 저장소:</label>
+                <input type="text" id="pushRemote" value="origin" placeholder="origin">
+            </div>
+            <button onclick="pushToRemote()">푸시</button>
+            <div id="pushResult" class="result-area" style="display: none;"></div>
+        </div>
+
+        <div class="workflow-section">
+            <h3>🔄 전체 워크플로우 실행</h3>
+            <div class="input-group">
+                <label for="workflowMessage">커밋 메시지:</label>
+                <input type="text" id="workflowMessage" placeholder="전체 워크플로우용 커밋 메시지">
+            </div>
+            <button onclick="runFullWorkflow()">전체 워크플로우 실행</button>
+            <div id="workflowResult" class="result-area" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const MCP_BASE_URL = 'http://localhost:8081';
+        let currentThreadId = 'web_interface_' + Date.now();
+
+        // 결과 표시 함수
+        function showResult(elementId, data, isSuccess = true) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            
+            if (typeof data === 'object') {
+                element.textContent = JSON.stringify(data, null, 2);
+            } else {
+                element.textContent = data;
+            }
+            
+            element.className = `result-area ${isSuccess ? 'success' : 'error'}`;
+        }
+
+        // 상태 메시지 표시 함수
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            
+            const container = document.querySelector('.container');
+            container.insertBefore(statusDiv, container.firstChild);
+            
+            setTimeout(() => statusDiv.remove(), 5000);
+        }
+
+        // MCP API 호출 함수
+        async function callMCP(query) {
+            try {
+                const response = await fetch(`${MCP_BASE_URL}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        thread_id: currentThreadId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                return result;
+            } catch (error) {
+                console.error('MCP API 호출 오류:', error);
+                throw error;
+            }
+        }
+
+        // Git 상태 확인
+        async function checkGitStatus() {
+            try {
+                showStatus('Git 상태를 확인하는 중...', 'info');
+                const result = await callMCP('Check current Git repository status');
+                showResult('gitStatusResult', result, true);
+                showStatus('Git 상태 확인 완료!', 'success');
+            } catch (error) {
+                showResult('gitStatusResult', `오류: ${error.message}`, false);
+                showStatus('Git 상태 확인 실패!', 'error');
+            }
+        }
+
+        // 모든 변경사항 스테이징
+        async function stageAllChanges() {
+            try {
+                showStatus('모든 변경사항을 스테이징하는 중...', 'info');
+                const result = await callMCP('Stage all changes in the repository');
+                showResult('stageResult', result, true);
+                showStatus('스테이징 완료!', 'success');
+            } catch (error) {
+                showResult('stageResult', `오류: ${error.message}`, false);
+                showStatus('스테이징 실패!', 'error');
+            }
+        }
+
+        // 특정 파일 스테이징
+        async function stageSpecificFiles() {
+            const files = document.getElementById('stageFiles').value.trim();
+            if (!files) {
+                showStatus('스테이징할 파일을 입력해주세요!', 'error');
+                return;
+            }
+
+            try {
+                showStatus('파일들을 스테이징하는 중...', 'info');
+                const result = await callMCP(`Stage the following files: ${files}`);
+                showResult('stageResult', result, true);
+                showStatus('파일 스테이징 완료!', 'success');
+            } catch (error) {
+                showResult('stageResult', `오류: ${error.message}`, false);
+                showStatus('파일 스테이징 실패!', 'error');
+            }
+        }
+
+        // 커밋 생성
+        async function createCommit() {
+            const message = document.getElementById('commitMessage').value.trim();
+            if (!message) {
+                showStatus('커밋 메시지를 입력해주세요!', 'error');
+                return;
+            }
+
+            try {
+                showStatus('커밋을 생성하는 중...', 'info');
+                const result = await callMCP(`Create a commit with message: ${message}`);
+                showResult('commitResult', result, true);
+                showStatus('커밋 생성 완료!', 'success');
+            } catch (error) {
+                showResult('commitResult', `오류: ${error.message}`, false);
+                showStatus('커밋 생성 실패!', 'error');
+            }
+        }
+
+        // 원격 저장소 푸시
+        async function pushToRemote() {
+            const branch = document.getElementById('pushBranch').value.trim() || 'main';
+            const remote = document.getElementById('pushRemote').value.trim() || 'origin';
+
+            try {
+                showStatus('원격 저장소에 푸시하는 중...', 'info');
+                const result = await callMCP(`Push to remote repository ${remote} branch ${branch}`);
+                showResult('pushResult', result, true);
+                showStatus('푸시 완료!', 'success');
+            } catch (error) {
+                showResult('pushResult', `오류: ${error.message}`, false);
+                showStatus('푸시 실패!', 'error');
+            }
+        }
+
+        // 전체 워크플로우 실행
+        async function runFullWorkflow() {
+            const message = document.getElementById('workflowMessage').value.trim();
+            if (!message) {
+                showStatus('커밋 메시지를 입력해주세요!', 'error');
+                return;
+            }
+
+            try {
+                showStatus('전체 워크플로우를 실행하는 중...', 'info');
+                
+                // 1. Git 상태 확인
+                await callMCP('Check current Git repository status');
+                
+                // 2. 모든 변경사항 스테이징
+                await callMCP('Stage all changes in the repository');
+                
+                // 3. 커밋 생성
+                const commitResult = await callMCP(`Create a commit with message: ${message}`);
+                
+                // 4. 푸시
+                const pushResult = await callMCP('Push to remote repository');
+                
+                const workflowResult = {
+                    step1: 'Git 상태 확인 완료',
+                    step2: '변경사항 스테이징 완료',
+                    step3: commitResult,
+                    step4: pushResult
+                };
+                
+                showResult('workflowResult', workflowResult, true);
+                showStatus('전체 워크플로우 실행 완료!', 'success');
+            } catch (error) {
+                showResult('workflowResult', `워크플로우 실행 오류: ${error.message}`, false);
+                showStatus('워크플로우 실행 실패!', 'error');
+            }
+        }
+
+        // 페이지 로드 시 초기화
+        window.onload = function() {
+            showStatus('MCP Git Workflow 웹 인터페이스가 준비되었습니다!', 'success');
+        };
+    </script>
+</body>
+</html>
