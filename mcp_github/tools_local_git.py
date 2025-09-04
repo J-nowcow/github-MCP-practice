@@ -124,9 +124,9 @@ async def create_commit(message: str, cwd: Optional[str] = None) -> Dict[str, An
         
         return {
             "success": result.returncode == 0,
-            "message": "커밋이 성공적으로 생성되었습니다." if result["success"] else "커밋 생성 실패",
-            "commit_hash": result.stdout.split()[-1] if result.success and "commit" in result.stdout else None,
-            "error": result.get("error") or result.get("stderr"),
+            "message": "커밋이 성공적으로 생성되었습니다." if result.returncode == 0 else "커밋 생성 실패",
+            "commit_hash": result.stdout.split()[-1] if result.returncode == 0 and "commit" in result.stdout else None,
+            "error": result.stderr if result.returncode != 0 else "",
             "command": " ".join(command_parts),
             "cwd": cwd
         }
