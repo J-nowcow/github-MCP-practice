@@ -3,7 +3,8 @@
 import asyncio
 from typing import Any
 
-from fastmcp import FastMCP, Tool
+from fastmcp import FastMCP
+from fastmcp.tools import Tool
 
 
 async def health() -> dict[str, str]:
